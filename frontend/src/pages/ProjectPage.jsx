@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, formatDuration, PRESETS, STAGES, stageName } from "../api.js";
 import { SimpleMarkdown } from "../components/Markup.jsx";
+import { PersonaModal } from "../components/PersonaInfo.jsx";
 
 const INTENSITY = {
   light: "Only fixes what a reader would stumble over.",
@@ -23,6 +24,7 @@ export default function ProjectPage() {
     } catch {}
   };
   const [error, setError] = useState("");
+  const [learnMore, setLearnMore] = useState(null);
   const lastStatus = useRef(null);
 
   const load = useCallback(() => api.get(`/projects/${id}`).then(setProject).catch((e) => setError(e.message)), [id]);
@@ -126,7 +128,18 @@ export default function ProjectPage() {
                 />
                 <span>
                   <strong>{stage.name}</strong>
-                  <small className="muted">{stage.blurb}</small>
+                  <small className="muted">
+                    {stage.blurb}{" "}
+                    <button
+                      className="link"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setLearnMore(stage.id);
+                      }}
+                    >
+                      Learn more
+                    </button>
+                  </small>
                 </span>
               </label>
             ))}
@@ -215,6 +228,8 @@ export default function ProjectPage() {
           onSave={(v) => patch({ style_sheet: v })}
         />
       </div>
+
+      {learnMore && <PersonaModal stageId={learnMore} onClose={() => setLearnMore(null)} />}
 
       <p className="danger-zone">
         <button className="link danger" onClick={remove}>

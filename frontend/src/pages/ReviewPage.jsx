@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api, stageName } from "../api.js";
+import BookPreview from "../components/BookPreview.jsx";
 import { Diff, Markup } from "../components/Markup.jsx";
 
 const FILTERS = {
@@ -17,6 +18,21 @@ export default function ReviewPage() {
   const [paragraphs, setParagraphs] = useState(null);
   const [filter, setFilter] = useState("all");
   const [showChanges, setShowChanges] = useState(true);
+  const [view, setViewState] = useState(() => {
+    try {
+      return localStorage.getItem("ravenquill.reviewView") || "side";
+    } catch {
+      return "side";
+    }
+  });
+  const setView = (next) => {
+    setViewState(next);
+    try {
+      localStorage.setItem("ravenquill.reviewView", next);
+    } catch {}
+  };
+  const [settings, setSettings] = useState(null);
+  const [scrollTarget, setScrollTarget] = useState(null);
   const [error, setError] = useState("");
   const chapterId = Number(params.get("chapter")) || chapters[0]?.id;
 
@@ -27,6 +43,17 @@ export default function ReviewPage() {
   useEffect(() => {
     loadChapters();
   }, [loadChapters]);
+
+  useEffect(() => {
+    if (view === "book" && !settings) api.get("/settings").then(setSettings).catch((e) => setError(e.message));
+  }, [view, settings]);
+
+  // After jumping from the book preview, bring that paragraph into view.
+  useEffect(() => {
+    if (view !== "side" || scrollTarget == null) return;
+    document.getElementById(`p-${scrollTarget}`)?.scrollIntoView({ block: "center" });
+    setScrollTarget(null);
+  }, [view, scrollTarget]);
 
   useEffect(() => {
     if (!chapterId) return;
@@ -44,6 +71,12 @@ export default function ReviewPage() {
 
   const visible = paragraphs?.filter(FILTERS[filter].test) ?? [];
   const chapterIndex = chapters.findIndex((c) => c.id === chapterId);
+
+  function reviewParagraph(paragraphId) {
+    setFilter("all");
+    setView("side");
+    setScrollTarget(paragraphId);
+  }
 
   function nextNeedingReview() {
     const el = document.querySelector(".row.needs-review");
@@ -85,33 +118,53 @@ export default function ReviewPage() {
       <main className="review-main">
         <div className="review-toolbar">
           <div className="segmented">
-            {Object.entries(FILTERS).map(([key, f]) => (
-              <button key={key} className={filter === key ? "active" : ""} onClick={() => setFilter(key)}>
-                {f.label}
-              </button>
-            ))}
+            <button className={view === "side" ? "active" : ""} onClick={() => setView("side")}>
+              Side by side
+            </button>
+            <button className={view === "book" ? "active" : ""} onClick={() => setView("book")}>
+              Book preview
+            </button>
           </div>
-          <label className="toggle">
-            <input type="checkbox" checked={showChanges} onChange={(e) => setShowChanges(e.target.checked)} /> Highlight
-            changes
-          </label>
-          <button onClick={nextNeedingReview}>Next to review ↓</button>
-          <span className="muted hint">Click edited text to change it · Ctrl+Enter saves</span>
+          {view === "side" && (
+            <>
+              <div className="segmented">
+                {Object.entries(FILTERS).map(([key, f]) => (
+                  <button key={key} className={filter === key ? "active" : ""} onClick={() => setFilter(key)}>
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+              <label className="toggle">
+                <input type="checkbox" checked={showChanges} onChange={(e) => setShowChanges(e.target.checked)} />{" "}
+                Highlight changes
+              </label>
+              <button onClick={nextNeedingReview}>Next to review ↓</button>
+              <span className="muted hint">Click edited text to change it · Ctrl+Enter saves</span>
+            </>
+          )}
         </div>
 
         {error && <p className="error">{error}</p>}
-
-        <div className="columns-header">
-          <div>Original</div>
-          <div />
-          <div>Edited</div>
-        </div>
-
         {paragraphs === null && <p className="muted pad">Loading…</p>}
-        {paragraphs && visible.length === 0 && <p className="muted pad">Nothing matches this filter in this chapter.</p>}
-        {visible.map((p) => (
-          <Row key={p.id} p={p} showChanges={showChanges} onUpdate={replace} />
-        ))}
+
+        {view === "book" ? (
+          paragraphs &&
+          settings && <BookPreview paragraphs={paragraphs} settings={settings} onSelect={reviewParagraph} />
+        ) : (
+          <>
+            <div className="columns-header">
+              <div>Original</div>
+              <div />
+              <div>Edited</div>
+            </div>
+            {paragraphs && visible.length === 0 && (
+              <p className="muted pad">Nothing matches this filter in this chapter.</p>
+            )}
+            {visible.map((p) => (
+              <Row key={p.id} p={p} showChanges={showChanges} onUpdate={replace} />
+            ))}
+          </>
+        )}
 
         {chapterIndex >= 0 && chapterIndex < chapters.length - 1 && (
           <div className="pad">
@@ -169,7 +222,7 @@ function Row({ p, showChanges, onUpdate }) {
 
   if (p.kind === "scene_break") {
     return (
-      <div className={className}>
+      <div id={`p-${p.id}`} className={className}>
         <div className="cell scene">* * *</div>
         <div className="gutter" />
         <div className="cell scene">* * *</div>
@@ -179,7 +232,7 @@ function Row({ p, showChanges, onUpdate }) {
 
   return (
     <>
-      <div className={className}>
+      <div id={`p-${p.id}`} className={className}>
         <div className="cell original">
           <Markup text={p.original} />
         </div>

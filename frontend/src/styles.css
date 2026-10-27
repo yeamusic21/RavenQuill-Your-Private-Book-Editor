@@ -12,6 +12,8 @@
   --flag: #c2780a;
   --ok: #2f7d4a;
   --book-font: "EB Garamond", Garamond, Georgia, "Times New Roman", serif;
+  --paper: #fffdf8;
+  --paper-ink: #23201c;
   --ui-font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   color-scheme: light dark;
 }
@@ -30,6 +32,8 @@
     --del-ink: #f0907f;
     --flag: #f0b44c;
     --ok: #7fcf98;
+    --paper: #2a2724;
+    --paper-ink: #ece6dc;
   }
 }
 
@@ -171,3 +175,36 @@ span.delete { color: var(--del-ink); text-decoration: line-through; opacity: 0.7
   .columns-header, .row { grid-template-columns: 1fr 28px 1fr; padding: 0 8px; }
   .history { margin-left: 8px; }
 }
+
+/* Book preview */
+.book-preview { padding: 16px; display: flex; flex-direction: column; align-items: center; }
+.book-preview > p { margin: 0 0 12px; text-align: center; }
+.book-page {
+  width: min(100%, var(--page-width)); padding: var(--page-margin); background: var(--paper); color: var(--paper-ink);
+  border: 1px solid var(--line); box-shadow: 0 2px 14px rgb(0 0 0 / 0.12);
+  font-size: var(--page-font-size); line-height: 1.38; text-align: justify; hyphens: auto;
+}
+.book-page p { margin: 0; }
+.book-para { text-indent: var(--page-indent); cursor: pointer; }
+.book-para.first { text-indent: 0; }
+.book-para:hover, .book-heading:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.book-heading { font-size: var(--page-heading-size); font-weight: 400; text-align: center; margin: 0 0 var(--page-heading-after); cursor: pointer; }
+.book-heading + .book-heading { margin-top: calc(-1 * var(--page-heading-after)); }
+.book-para + .book-heading { margin-top: var(--page-margin); padding-top: var(--page-margin); border-top: 1px dashed var(--line); }
+.book-scene { text-align: center; margin: var(--page-scene-space) 0 !important; }
+@media (max-width: 640px) { .book-page { padding: 24px 16px; } }
+
+/* Persona "Learn more" dialog */
+.persona-modal { border: 1px solid var(--line); border-radius: 12px; padding: 0; width: min(680px, calc(100vw - 32px)); max-height: calc(100vh - 48px); background: var(--surface); color: var(--ink); }
+.persona-modal::backdrop { background: rgb(0 0 0 / 0.45); }
+.persona-modal-body { padding: 20px 24px; }
+.persona-modal-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.persona-modal-head h2 { margin: 0; }
+.persona-modal ul { padding-left: 20px; margin: 4px 0; }
+.persona-modal li { margin: 3px 0; }
+.persona-example { border-left: 3px solid var(--line); padding: 4px 12px; margin: 10px 0; }
+.persona-example-text { font-family: var(--book-font); font-size: 1.08rem; margin: 4px 0; }
+.persona-example .markdown h3 { margin: 6px 0 2px; font-size: 0.95rem; }
+.persona-example .markdown p { margin: 2px 0; font-family: var(--book-font); }
+.stage-option button.link { font-size: inherit; }
+.persona-example .delete { margin-right: 3px; }
