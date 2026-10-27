@@ -97,6 +97,8 @@ textarea { resize: vertical; font-family: var(--ui-font); }
 .status-paused { background: color-mix(in srgb, var(--flag) 22%, transparent); color: var(--flag); }
 
 /* Project page */
+.presets { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.presets button.selected { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .stage-list { display: flex; flex-direction: column; gap: 10px; }
 .stage-option { display: flex; gap: 10px; align-items: flex-start; }
 .stage-option span { display: flex; flex-direction: column; }

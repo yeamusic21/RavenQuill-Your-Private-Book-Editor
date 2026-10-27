@@ -34,6 +34,14 @@ export const STAGES = [
   { id: "proofread", name: "Proofreader", blurb: "Book typography (quotes, dashes, ellipses) and a final error sweep." },
 ];
 
+// One-click choices for the project page; the checkboxes below them still allow any mix.
+export const PRESETS = [
+  { name: "Full edit", stages: ["architect", "prose", "copyedit", "proofread"] },
+  { name: "Copy-edit only", stages: ["copyedit", "proofread"], blurb: "Grammar, typos and typography. Leaves your sentences alone." },
+  { name: "Proofread only", stages: ["proofread"] },
+  { name: "Story report only", stages: ["architect"] },
+];
+
 export const stageName = (id) => STAGES.find((s) => s.id === id)?.name ?? (id === "author" ? "You" : id);
 
 export function formatDuration(seconds) {

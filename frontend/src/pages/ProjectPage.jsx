@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { api, formatDuration, STAGES, stageName } from "../api.js";
+import { api, formatDuration, PRESETS, STAGES, stageName } from "../api.js";
 import { SimpleMarkdown } from "../components/Markup.jsx";
 
 const INTENSITY = {
@@ -13,7 +13,15 @@ export default function ProjectPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [project, setProject] = useState(null);
-  const [stages, setStages] = useState(STAGES.map((s) => s.id));
+  const [stages, setStagesState] = useState(() => loadStages(id));
+  const setStages = (next) => {
+    // Keep pipeline order no matter which order boxes were ticked in.
+    const ordered = STAGES.map((s) => s.id).filter((s) => next.includes(s));
+    setStagesState(ordered);
+    try {
+      localStorage.setItem(stagesKey(id), JSON.stringify(ordered));
+    } catch {}
+  };
   const [error, setError] = useState("");
   const lastStatus = useRef(null);
 
@@ -88,6 +96,23 @@ export default function ProjectPage() {
       <div className="grid-2">
         <section className="card">
           <h2>Run the editors</h2>
+          <div className="presets">
+            {PRESETS.map((preset) => {
+              const selected = preset.stages.join() === stages.join();
+              return (
+                <button
+                  key={preset.name}
+                  className={`small${selected ? " selected" : ""}`}
+                  aria-pressed={selected}
+                  title={preset.blurb}
+                  disabled={active}
+                  onClick={() => setStages(preset.stages)}
+                >
+                  {preset.name}
+                </button>
+              );
+            })}
+          </div>
           <div className="stage-list">
             {STAGES.map((stage) => (
               <label key={stage.id} className="stage-option">
@@ -107,16 +132,18 @@ export default function ProjectPage() {
             ))}
           </div>
 
-          <label className="field">
-            Prose Editor intensity
-            <select value={project.intensity} disabled={active} onChange={(e) => patch({ intensity: e.target.value })}>
-              {Object.keys(INTENSITY).map((k) => (
-                <option key={k} value={k}>
-                  {k[0].toUpperCase() + k.slice(1)}: {INTENSITY[k]}
-                </option>
-              ))}
-            </select>
-          </label>
+          {stages.includes("prose") && (
+            <label className="field">
+              Prose Editor intensity
+              <select value={project.intensity} disabled={active} onChange={(e) => patch({ intensity: e.target.value })}>
+                {Object.keys(INTENSITY).map((k) => (
+                  <option key={k} value={k}>
+                    {k[0].toUpperCase() + k.slice(1)}: {INTENSITY[k]}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
 
           <div className="actions">
             {active ? (
@@ -196,6 +223,16 @@ export default function ProjectPage() {
       </p>
     </main>
   );
+}
+
+const stagesKey = (id) => `ravenquill.stages.${id}`;
+
+function loadStages(id) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(stagesKey(id)));
+    if (Array.isArray(saved)) return STAGES.map((s) => s.id).filter((s) => saved.includes(s));
+  } catch {}
+  return STAGES.map((s) => s.id);
 }
 
 function JobStatus({ job }) {
