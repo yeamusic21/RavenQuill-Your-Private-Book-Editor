@@ -85,6 +85,42 @@ CREATE TABLE IF NOT EXISTS checkpoints (
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE(project_id, label)
 );
+
+-- Outlines are checked by the Outline Doctor in rounds until no holes are left open.
+CREATE TABLE IF NOT EXISTS outlines (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    text TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'idle',   -- idle|reviewing|error
+    error TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS outline_rounds (
+    id INTEGER PRIMARY KEY,
+    outline_id INTEGER NOT NULL REFERENCES outlines(id) ON DELETE CASCADE,
+    round INTEGER NOT NULL,
+    text TEXT NOT NULL,                -- the outline as it was reviewed
+    new_holes INTEGER NOT NULL DEFAULT 0,
+    fixed_holes INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS outline_holes (
+    id INTEGER PRIMARY KEY,
+    outline_id INTEGER NOT NULL REFERENCES outlines(id) ON DELETE CASCADE,
+    round INTEGER NOT NULL,            -- round that raised it
+    title TEXT NOT NULL,
+    location TEXT NOT NULL DEFAULT '',
+    severity TEXT NOT NULL DEFAULT 'major',  -- major|minor
+    detail TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'open',     -- open|fixed|rejected|explained
+    response TEXT NOT NULL DEFAULT '',       -- author's reason or explanation
+    resolved_round INTEGER,            -- round the Outline Doctor confirmed the fix
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS ix_holes_outline ON outline_holes(outline_id);
 """
 
 
@@ -96,6 +132,8 @@ def init():
         # A server restart interrupts any running job; let the user resume it.
         db.execute("UPDATE jobs SET status='paused', message='Interrupted (server restarted). Press Resume.' "
                    "WHERE status IN ('running','queued')")
+        db.execute("UPDATE outlines SET status='error', error='Interrupted (server restarted). Check again.' "
+                   "WHERE status='reviewing'")
 
 
 @contextmanager

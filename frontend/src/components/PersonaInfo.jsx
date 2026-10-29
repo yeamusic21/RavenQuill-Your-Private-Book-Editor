@@ -146,6 +146,36 @@ export const PERSONA_INFO = {
       { title: "A missed error", parts: ["He picked up the cup and ", { del: "drunk", ins: "drank" }, "."] },
     ],
   },
+  outline: {
+    summary:
+      "Reads your outline before you write the book and reports the holes: anything that would break the finished story. It works in rounds until no holes are left open.",
+    does: [
+      "Looks for plot holes, logic gaps, unmotivated choices, setups with no payoff (and payoffs with no setup), dropped threads, timeline contradictions, unclear stakes and climaxes the story doesn't build to.",
+      "On every later round, re-reads your updated outline and marks open holes as fixed when the outline now covers them.",
+      "Is told which holes you rejected or explained, and takes your explanations as true, so it won't keep raising them.",
+    ],
+    doesnt: [
+      "Change your outline. You edit it; it only reports.",
+      "Comment on wording, or ask for more detail just because an outline is a summary.",
+    ],
+    expect: [
+      "Answer each hole: fix the outline, Reject it (with an optional reason), or Explain it (say how it works). Then press Check again.",
+      "You're done when a round finds no new holes and none are left open.",
+      "Each round is one request, so it reads the whole outline at once. Very long outlines need a bigger context length in LM Studio.",
+      "Small local models can misread an outline. Rejecting a hole you disagree with is normal.",
+    ],
+    examples: [
+      {
+        title: "A hole it might raise",
+        markdown:
+          "### Sword from nowhere (Act 3, major)\nMara defeats the Duke with a sword that's never mentioned before. The climax depends on it, so it needs a setup.",
+      },
+      {
+        title: "Explained, so it won't come up again",
+        markdown: "### Why the locksmith? (Act 2, minor)\n**You:** Her mother's letter in Act 1 names him.",
+      },
+    ],
+  },
 };
 
 export function PersonaModal({ stageId, onClose }) {

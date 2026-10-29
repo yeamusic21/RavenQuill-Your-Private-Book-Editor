@@ -77,7 +77,7 @@ export default function ProjectPage() {
   async function remove() {
     if (!confirm(`Delete “${project.name}” and all its edits? This cannot be undone.`)) return;
     await api.del(`/projects/${id}`);
-    navigate("/");
+    navigate("/projects");
   }
 
   return (

@@ -26,6 +26,19 @@ They run in that order, and everything merges into **one living document**.
   introduces stock AI phrases ("tapestry", "testament to", "a dance of"…).
 - Nothing is lost: each paragraph keeps its original text and a full edit history.
 
+## Outlines
+Before you write (or rewrite), the **Outline Doctor** can check your outline for holes: plot holes,
+unmotivated choices, setups with no payoff, dropped threads, timeline contradictions, unclear stakes.
+Open **Outlines**, upload a .docx/.txt/.md or paste the outline, and press **Check for holes**.
+
+Answer each hole one of three ways, then press **Check again**:
+- **Fix it** in the outline (edit it right there). The next round confirms the fix.
+- **Reject** it, with an optional reason.
+- **Explain** it: say how it works. The Outline Doctor takes your explanation as true.
+
+Rejected and explained holes are never raised again. You're done when a round finds no new holes
+and none are left open. **Download report** gives every hole, your answers, and the outline as .md.
+
 ## Reviewing
 The review screen shows **Original | Edited** side by side, chapter by chapter.
 

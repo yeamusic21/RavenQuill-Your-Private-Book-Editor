@@ -32,7 +32,7 @@ export default function ProjectsPage() {
   }
 
   return (
-    <main className="page narrow">
+    <main className="page">
       <section className="card">
         <h2>New project</h2>
         <p className="muted">Upload your manuscript as a .docx. Chapters are detected from headings or “Chapter …” lines.</p>

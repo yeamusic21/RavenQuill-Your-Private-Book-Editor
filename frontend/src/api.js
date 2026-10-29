@@ -42,7 +42,15 @@ export const PRESETS = [
   { name: "Story report only", stages: ["architect"] },
 ];
 
-export const stageName = (id) => STAGES.find((s) => s.id === id)?.name ?? (id === "author" ? "You" : id);
+// Works on outlines rather than the manuscript, so it isn't one of the STAGES.
+export const OUTLINE_DOCTOR = {
+  id: "outline",
+  name: "Outline Doctor",
+  blurb: "Checks your outline for holes before you write. You fix, reject or explain each one until none are left.",
+};
+
+export const stageName = (id) =>
+  STAGES.find((s) => s.id === id)?.name ?? (id === OUTLINE_DOCTOR.id ? OUTLINE_DOCTOR.name : id === "author" ? "You" : id);
 
 export function formatDuration(seconds) {
   if (seconds == null) return "";

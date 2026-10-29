@@ -196,3 +196,100 @@ def parse_batch(reply: str, expected: int) -> list[str] | None:
     if sorted(found) != list(range(1, expected + 1)):
         return None
     return [found[n] for n in range(1, expected + 1)]
+
+
+# --- Outline Doctor ----------------------------------------------------------------------
+# Works on an outline instead of a manuscript, in rounds: it re-checks the holes still
+# open, and is told which ones the author rejected or explained so it won't raise them again.
+
+OUTLINE_SYSTEM = """You are a book doctor reviewing a novel's OUTLINE before it is written.
+Find HOLES: problems that would break the finished story. Look for:
+- plot holes and logic gaps (events with no cause, solutions that come from nowhere)
+- unmotivated choices (characters acting against their stated goals with no reason)
+- setups with no payoff, and payoffs with no setup
+- dropped threads and characters who disappear
+- timeline and continuity contradictions
+- stakes that are unclear, or a climax that the earlier events don't build to
+Raise only real holes a reader or agent would notice. Not style, not word choice, not
+"add more detail". An outline is a summary: missing detail is not a hole unless the
+story can't work without it. If the outline is sound, say so. Don't invent problems.
+
+Reply in exactly this format and nothing else:
+CHECK:
+[<number>] FIXED or OPEN
+(one line for every OPEN HOLE you were given: FIXED if the outline now deals with it, OPEN if not;
+skip CHECK if you were given no open holes)
+HOLE: <short title>
+WHERE: <section, chapter or act>
+SEVERITY: <major or minor>
+WHY: <1-3 sentences: what's wrong and why it matters>
+(repeat HOLE/WHERE/SEVERITY/WHY for each new hole)
+Only list holes that are NEW: never repeat an open, fixed or settled hole as a HOLE,
+and never use HOLE to say that something was fixed.
+If there are no new holes, write NO NEW HOLES."""
+
+
+def outline_prompt(text: str, open_holes: list[dict], settled: list[dict]) -> str:
+    parts = ["OUTLINE:\n" + text.strip()]
+    if open_holes:
+        parts.append("OPEN HOLES from earlier rounds. Give each one a CHECK line saying whether the outline "
+                     "above now fixes it; do not repeat them as new holes:\n" +
+                     "\n".join(f"[{h['id']}] {h['title']}: {h['detail']}" for h in open_holes))
+    if settled:
+        lines = []
+        for h in settled:
+            if h["status"] == "fixed":
+                lines.append(f"- {h['title']} (fixed)")
+            else:
+                verb = "rejected it" if h["status"] == "rejected" else "explained it"
+                why = f': "{h["response"].strip()}"' if h["response"].strip() else ""
+                lines.append(f"- {h['title']} (the author {verb}{why})")
+        parts.append("SETTLED. The author has dealt with these. Do NOT raise them again in any form, "
+                     "and take the author's explanations as true:\n" + "\n".join(lines))
+    if open_holes:  # small models follow the end of the prompt best
+        ids = ", ".join(str(h["id"]) for h in open_holes)
+        parts.append(f"Start your reply with CHECK: and one line for each open hole ({ids}), "
+                     "then list any NEW holes.")
+    return "\n\n".join(parts)
+
+
+FIELD_RE = re.compile(r"^\W*(FIXED|HOLE|WHERE|SEVERITY|WHY)\W*?:\s*(.*)$", re.IGNORECASE)
+CHECK_RE = re.compile(r"^\W*(?:CHECK\W*)?\[(\d+)\][^\n]*?\b(not fixed|unfixed|still open|open|fixed)\b", re.IGNORECASE)
+
+
+def parse_outline_review(reply: str, open_ids: list[int]) -> tuple[list[int], list[dict]]:
+    """Return (ids of open holes now fixed, new holes). Tolerates markdown and missing fields."""
+    fixed: list[int] = []
+    holes: list[dict] = []
+    field = None
+    for raw in reply.splitlines():
+        line = raw.strip().strip("*").strip()
+        if re.match(r"no new holes", line, re.IGNORECASE):
+            field = None
+            continue
+        if (c := CHECK_RE.match(line)) and field != "WHY":
+            if c.group(2).lower() == "fixed" and int(c.group(1)) in open_ids:
+                fixed.append(int(c.group(1)))
+            continue
+        m = FIELD_RE.match(raw.strip())
+        if m:
+            field, value = m.group(1).upper(), m.group(2).strip().strip("*").strip()
+            if field == "FIXED":  # older "FIXED: 1, 2" style, which some models still produce
+                fixed += [int(n) for n in re.findall(r"\d+", value) if int(n) in open_ids]
+            elif field == "HOLE":
+                holes.append({"title": value, "location": "", "severity": "major", "detail": ""})
+            elif holes:
+                key = {"WHERE": "location", "SEVERITY": "severity", "WHY": "detail"}[field]
+                holes[-1][key] = value
+            continue
+        if line and field == "WHY" and holes:  # WHY ran onto more lines
+            holes[-1]["detail"] = f"{holes[-1]['detail']} {line}".strip()
+    for h in holes:
+        h["severity"] = "minor" if "minor" in h["severity"].lower() else "major"
+        h["title"] = h["title"][:200] or h["detail"][:80] or "Untitled hole"
+    return sorted(set(fixed)), [h for h in holes if h["title"] or h["detail"]]
+
+
+def is_repeat(hole: dict, existing: list[dict]) -> bool:
+    """Small models often re-raise a hole they just marked fixed (or one the author settled)."""
+    return any(similarity(hole["title"], h["title"]) >= 0.75 for h in existing)

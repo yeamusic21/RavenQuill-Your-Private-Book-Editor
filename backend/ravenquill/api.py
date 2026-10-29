@@ -3,6 +3,7 @@
 Interactive API docs: http://localhost:8000/docs"""
 import json
 import shutil
+import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -11,7 +12,7 @@ from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import db, pipeline
+from . import db, outline, pipeline
 from .config import FRONTEND_DIST, STAGES
 from .docx_io import parse_docx
 from .llm import LLM, LLMError
@@ -330,6 +331,143 @@ def export(project_id: int, kind: str):
     path = pipeline.write_exports(project_id, (kind,))[kind]
     return FileResponse(path, filename=path.name,
                         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+
+
+# --- outlines (Outline Doctor) -------------------------------------------------------------
+
+def _outline_or_404(conn, outline_id: int) -> dict:
+    row = conn.execute("SELECT * FROM outlines WHERE id=?", (outline_id,)).fetchone()
+    if not row:
+        raise HTTPException(404, "Outline not found")
+    return dict(row)
+
+
+@app.get("/api/outlines")
+def list_outlines():
+    with db.connect() as conn:
+        return db.rows(conn.execute("""
+            SELECT o.id, o.name, o.status, o.created_at, o.updated_at,
+                   (SELECT count(*) FROM outline_rounds r WHERE r.outline_id=o.id) AS rounds,
+                   (SELECT count(*) FROM outline_holes h WHERE h.outline_id=o.id AND h.status='open') AS open_holes
+            FROM outlines o ORDER BY o.updated_at DESC"""))
+
+
+@app.post("/api/outlines")
+def create_outline(name: str = Form(""), text: str = Form(""), file: UploadFile | None = File(None)):
+    """Create from an uploaded .docx/.txt/.md file, or from pasted text."""
+    if file and file.filename:
+        suffix = Path(file.filename).suffix.lower()
+        if suffix == ".docx":
+            with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as out:
+                shutil.copyfileobj(file.file, out)
+            path = Path(out.name)
+            try:
+                text = outline.docx_to_text(path)
+            except Exception as e:
+                raise HTTPException(400, f"Couldn't read that .docx: {e}")
+            finally:
+                path.unlink(missing_ok=True)
+        elif suffix in (".txt", ".md", ".markdown"):
+            text = file.file.read().decode("utf-8", errors="replace")
+        else:
+            raise HTTPException(400, "Please upload a .docx, .txt or .md file")
+        name = name.strip() or Path(file.filename).stem
+    text = text.replace("\r\n", "\n")
+    if not text.strip():
+        raise HTTPException(400, "The outline is empty")
+    with db.connect() as conn:
+        outline_id = conn.execute("INSERT INTO outlines(name, text) VALUES(?,?)",
+                                  (name.strip() or "Untitled outline", text.strip())).lastrowid
+    return get_outline(outline_id)
+
+
+@app.get("/api/outlines/{outline_id}")
+def get_outline(outline_id: int):
+    with db.connect() as conn:
+        o = _outline_or_404(conn, outline_id)
+        o["holes"] = db.rows(conn.execute(
+            "SELECT * FROM outline_holes WHERE outline_id=? ORDER BY severity, id", (outline_id,)))
+        o["rounds"] = db.rows(conn.execute(
+            "SELECT id, round, new_holes, fixed_holes, created_at, text = ? AS same_text "
+            "FROM outline_rounds WHERE outline_id=? ORDER BY round", (o["text"], outline_id)))
+    o["words"] = word_count(o["text"])
+    return o
+
+
+class OutlinePatch(BaseModel):
+    name: str | None = None
+    text: str | None = None
+
+
+@app.patch("/api/outlines/{outline_id}")
+def patch_outline(outline_id: int, patch: OutlinePatch):
+    with db.connect() as conn:
+        _outline_or_404(conn, outline_id)
+        for key, value in patch.model_dump(exclude_none=True).items():
+            conn.execute(f"UPDATE outlines SET {key}=?, updated_at=datetime('now') WHERE id=?",
+                         (value.replace("\r\n", "\n").strip(), outline_id))
+    return get_outline(outline_id)
+
+
+@app.delete("/api/outlines/{outline_id}")
+def delete_outline(outline_id: int):
+    with db.connect() as conn:
+        _outline_or_404(conn, outline_id)
+        conn.execute("DELETE FROM outlines WHERE id=?", (outline_id,))
+    return {"ok": True}
+
+
+@app.post("/api/outlines/{outline_id}/review")
+def review_outline(outline_id: int):
+    with db.connect() as conn:
+        o = _outline_or_404(conn, outline_id)
+    if not o["text"].strip():
+        raise HTTPException(400, "The outline is empty")
+    if not outline.start_review(outline_id):
+        raise HTTPException(409, "The Outline Doctor is already reading this outline")
+    return get_outline(outline_id)
+
+
+class HolePatch(BaseModel):
+    status: str
+    response: str = ""
+
+
+@app.patch("/api/holes/{hole_id}")
+def patch_hole(hole_id: int, patch: HolePatch):
+    if patch.status not in ("open", "fixed", "rejected", "explained"):
+        raise HTTPException(400, "status must be open, fixed, rejected or explained")
+    if patch.status == "explained" and not patch.response.strip():
+        raise HTTPException(400, "Write the explanation so the Outline Doctor can take it into account")
+    with db.connect() as conn:
+        row = conn.execute("SELECT outline_id FROM outline_holes WHERE id=?", (hole_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, "Hole not found")
+        conn.execute("UPDATE outline_holes SET status=?, response=?, resolved_round=NULL WHERE id=?",
+                     (patch.status, patch.response.strip(), hole_id))
+    return get_outline(row["outline_id"])
+
+
+@app.get("/api/outlines/{outline_id}/export")
+def export_outline(outline_id: int):
+    o = get_outline(outline_id)
+    labels = {"open": "Open", "fixed": "Fixed", "rejected": "Rejected", "explained": "Explained"}
+    lines = [f"# Outline Doctor report — {o['name']}", "",
+             f"{len(o['rounds'])} rounds · {sum(h['status'] == 'open' for h in o['holes'])} holes open", ""]
+    for status in labels:
+        holes = [h for h in o["holes"] if h["status"] == status]
+        if not holes:
+            continue
+        lines += [f"## {labels[status]}", ""]
+        for h in holes:
+            where = f" ({h['location']})" if h["location"] else ""
+            lines.append(f"- **{h['title']}**{where}, {h['severity']}: {h['detail']}")
+            if h["response"]:
+                lines.append(f"  - Author: {h['response']}")
+        lines.append("")
+    lines += ["## Outline", "", o["text"], ""]
+    return PlainTextResponse("\n".join(lines), headers={
+        "Content-Disposition": f'attachment; filename="{o["name"]} - outline report.md"'})
 
 
 # Serve the built React app (npm run build) from the same server.
